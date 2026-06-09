@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-border: oklch(0.26 0.01 260);
+  --color-input: oklch(0.26 0.01 260);
+  --color-ring: oklch(0.55 0.15 260);
+  --color-background: oklch(0.12 0.01 260);
+  --color-foreground: oklch(0.93 0.01 260);
+  
+  --color-primary: oklch(0.55 0.18 260);
+  --color-primary-foreground: oklch(0.98 0.005 260);
+  
+  --color-secondary: oklch(0.22 0.015 260);
+  --color-secondary-foreground: oklch(0.93 0.01 260);
+  
+  --color-destructive: oklch(0.55 0.2 25);
+  --color-destructive-foreground: oklch(0.98 0.005 25);
+  
+  --color-muted: oklch(0.18 0.01 260);
+  --color-muted-foreground: oklch(0.6 0.02 260);
+  
+  --color-accent: oklch(0.22 0.015 260);
+  --color-accent-foreground: oklch(0.93 0.01 260);
+  
+  --color-popover: oklch(0.15 0.01 260);
+  --color-popover-foreground: oklch(0.93 0.01 260);
+  
+  --color-card: oklch(0.16 0.01 260);
+  --color-card-foreground: oklch(0.93 0.01 260);
+  
+  --color-sidebar: oklch(0.13 0.015 260);
+  --color-sidebar-foreground: oklch(0.93 0.01 260);
+  --color-sidebar-border: oklch(0.22 0.01 260);
+  --color-sidebar-accent: oklch(0.22 0.02 260);
+  --color-sidebar-accent-foreground: oklch(0.93 0.01 260);
+  --color-sidebar-ring: oklch(0.55 0.15 260);
+
+  /* Financial semantic colors */
+  --color-finance-income: oklch(0.65 0.17 145);
+  --color-finance-income-muted: oklch(0.25 0.05 145);
+  --color-finance-expense: oklch(0.60 0.20 25);
+  --color-finance-expense-muted: oklch(0.25 0.05 25);
+  --color-finance-overdue: oklch(0.65 0.18 55);
+  --color-finance-overdue-muted: oklch(0.25 0.05 55);
+  --color-finance-balance: oklch(0.60 0.15 240);
+  --color-finance-balance-muted: oklch(0.22 0.04 240);
+  --color-finance-neutral: oklch(0.55 0.01 260);
+  --color-finance-neutral-muted: oklch(0.20 0.01 260);
+
+  --radius-lg: 0.75rem;
+  --radius-md: calc(var(--radius-lg) - 2px);
+  --radius-sm: calc(var(--radius-lg) - 4px);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0.01 260);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0.01 260);
+}
+
+/* Smooth transitions */
+.transition-theme {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
