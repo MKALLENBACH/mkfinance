@@ -10,9 +10,36 @@ type InsertDebt = Database['public']['Tables']['debts']['Insert']
 type UpdateDebt = Database['public']['Tables']['debts']['Update']
 
 async function generateInstallmentTransactions(debtData: any, userId: string) {
-  if (debtData && debtData.monthly_payment && debtData.monthly_payment > 0 && debtData.due_day !== null) {
+  if (debtData && debtData.current_amount > 0) {
     const today = new Date()
     const dueDay = debtData.due_day
+
+    // Se não tiver dia de vencimento/frequência, consideramos parcela única
+    if (dueDay === null) {
+      let dueDateStr = today.toISOString().split('T')[0]
+      if (debtData.target_payoff_date) {
+          dueDateStr = debtData.target_payoff_date
+      }
+
+      await supabase.from('transactions').insert([{
+        user_id: userId,
+        type: 'despesa' as const,
+        description: `Parcela Única: ${debtData.name}`,
+        amount: debtData.current_amount,
+        due_date: dueDateStr,
+        status: 'em_aberto' as const,
+        is_fixed: true,
+        person_id: debtData.creditor_id || null,
+        notes: `Gerado automaticamente pela dívida: ${debtData.name}`,
+        installment_group_id: debtData.id,
+        installment_number: 1,
+        installment_total: 1
+      }])
+      return;
+    }
+
+    // Lógica para parcelado
+    if (!debtData.monthly_payment || debtData.monthly_payment <= 0) return;
 
     let currentAmount = debtData.current_amount
     let installmentAmount = debtData.monthly_payment
