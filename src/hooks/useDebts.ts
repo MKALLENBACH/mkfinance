@@ -52,19 +52,27 @@ async function generateInstallmentTransactions(debtData: any, userId: string) {
     const targetWeekday = isWeekly ? dueDay - 100 : 0;
     
     let currentDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    
     let currentMonthOffset = 0;
-    if (isWeekly) {
-        let currentDay = currentDate.getDay();
-        let daysUntilTarget = targetWeekday - currentDay;
-        if (daysUntilTarget < 0) {
-            daysUntilTarget += 7;
-        }
-        currentDate.setDate(currentDate.getDate() + daysUntilTarget);
+    
+    if (debtData.start_date) {
+        // Se a data de início foi fornecida, a primeira parcela será exatamente nessa data
+        // e os cálculos subsequentes serão baseados nela.
+        currentDate = new Date(debtData.start_date + 'T12:00:00');
     } else {
-        const thisMonthDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
-        if (thisMonthDate < today) {
-           currentMonthOffset = 1
+        // Fallback para a lógica original caso não tenha sido preenchido
+        if (isWeekly) {
+            let currentDay = currentDate.getDay();
+            let daysUntilTarget = targetWeekday - currentDay;
+            if (daysUntilTarget < 0) {
+                daysUntilTarget += 7;
+            }
+            currentDate.setDate(currentDate.getDate() + daysUntilTarget);
+        } else {
+            const thisMonthDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
+            if (thisMonthDate < today) {
+               currentMonthOffset = 1
+            }
+            currentDate = new Date(today.getFullYear(), today.getMonth() + currentMonthOffset, dueDay)
         }
     }
 
@@ -77,17 +85,7 @@ async function generateInstallmentTransactions(debtData: any, userId: string) {
           }
       }
 
-      let dateToInsert: Date;
-      if (isWeekly) {
-          dateToInsert = new Date(currentDate);
-          currentDate.setDate(currentDate.getDate() + 7);
-      } else {
-          const targetMonth = today.getMonth() + currentMonthOffset + (i - 1)
-          dateToInsert = new Date(today.getFullYear(), targetMonth, dueDay)
-          if (dateToInsert.getDate() !== dueDay) {
-             dateToInsert = new Date(today.getFullYear(), targetMonth + 1, 0)
-          }
-      }
+      let dateToInsert = new Date(currentDate);
 
       const dueDateStr = dateToInsert.getFullYear() + '-' + String(dateToInsert.getMonth() + 1).padStart(2, '0') + '-' + String(dateToInsert.getDate()).padStart(2, '0')
 
@@ -105,8 +103,17 @@ async function generateInstallmentTransactions(debtData: any, userId: string) {
         installment_number: i,
         installment_total: numInstallments
       })
+      
+      // Advance to next installment
+      if (isWeekly) {
+          currentDate.setDate(currentDate.getDate() + 7);
+      } else {
+          currentDate.setMonth(currentDate.getMonth() + 1);
+          // Only adjust for due_day if start_date wasn't explicitly used as the anchor day,
+          // OR we can just respect the day of the explicit start date!
+          // We will respect the day of the currentDate.
+      }
     }
-
     if (transactionsToInsert.length > 0) {
       await supabase.from('transactions').insert(transactionsToInsert)
     }

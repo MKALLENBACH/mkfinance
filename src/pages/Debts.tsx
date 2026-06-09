@@ -42,6 +42,7 @@ export function Debts() {
       creditor_id: null,
       monthly_payment: null,
       due_day: null,
+      start_date: null,
       target_payoff_date: null
     })
   }
@@ -63,6 +64,7 @@ export function Debts() {
       creditor_id: formData.creditor_id || null,
       monthly_payment: formData.monthly_payment || null,
       due_day: formData.due_day ? parseInt(formData.due_day) : null,
+      start_date: formData.start_date || null,
       target_payoff_date: formData.target_payoff_date || null
     }
 
@@ -222,6 +224,14 @@ export function Debts() {
                   <option value="100">Todo Domingo</option>
                 </optgroup>
               </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Data da 1ª Parcela (opcional)</label>
+              <Input 
+                type="date"
+                value={formData.start_date || ''} 
+                onChange={e => setFormData({...formData, start_date: e.target.value || null})}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Data Alvo para Quitação (opcional)</label>
