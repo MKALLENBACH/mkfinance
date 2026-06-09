@@ -39,7 +39,10 @@ export function Debts() {
       current_amount: 0,
       status: 'ativa',
       priority: 'media',
-      creditor_id: null
+      creditor_id: null,
+      monthly_payment: null,
+      due_day: null,
+      target_payoff_date: null
     })
   }
 
@@ -59,6 +62,7 @@ export function Debts() {
       priority: formData.priority as any,
       creditor_id: formData.creditor_id || null,
       monthly_payment: formData.monthly_payment || null,
+      due_day: formData.due_day ? parseInt(formData.due_day) : null,
       target_payoff_date: formData.target_payoff_date || null
     }
 
@@ -187,11 +191,21 @@ export function Debts() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Parcela Mensal (opcional)</label>
+              <label className="text-sm font-medium">Parcela Mensal</label>
               <Input 
                 type="number" step="0.01"
+                placeholder="Valor da parcela"
                 value={formData.monthly_payment || ''} 
                 onChange={e => setFormData({...formData, monthly_payment: parseFloat(e.target.value) || null})}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Dia de Vencimento</label>
+              <Input 
+                type="number" min={1} max={31}
+                placeholder="Ex: 10 (dia 10 de cada mês)"
+                value={formData.due_day || ''} 
+                onChange={e => setFormData({...formData, due_day: e.target.value})}
               />
             </div>
             <div className="space-y-2">

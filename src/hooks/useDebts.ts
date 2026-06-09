@@ -41,6 +41,7 @@ export function useCreateDebt() {
     mutationFn: async (debt: Omit<InsertDebt, 'user_id'>) => {
       if (!user) throw new Error('Not authenticated')
 
+      // 1. Create the debt
       const { data, error } = await supabase
         .from('debts')
         .insert([{ ...debt, user_id: user.id }])
@@ -48,10 +49,37 @@ export function useCreateDebt() {
         .single()
 
       if (error) throw error
+
+      // 2. If a monthly payment is set, auto-create the next upcoming expense transaction
+      if (data && data.monthly_payment && data.monthly_payment > 0) {
+        const today = new Date()
+        const dueDay = data.due_day || today.getDate()
+
+        // Calculate next due date: if the due day this month is already past, go to next month
+        let dueDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
+        if (dueDate < today) {
+          dueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay)
+        }
+
+        const dueDateStr = dueDate.toISOString().split('T')[0]
+
+        await supabase.from('transactions').insert([{
+          user_id: user.id,
+          type: 'despesa' as const,
+          description: `Parcela: ${data.name}`,
+          amount: data.monthly_payment,
+          due_date: dueDateStr,
+          status: 'em_aberto' as const,
+          is_fixed: true,
+          person_id: data.creditor_id || null,
+          notes: `Gerado automaticamente pela dívida: ${data.name}`,
+        }])
+      }
+
       return data
     },
     onSuccess: () => {
-      toast.success('Dívida registrada com sucesso!')
+      toast.success('Dívida registrada! Lançamento de despesa criado automaticamente.')
       invalidateFinanceData(queryClient)
     },
     onError: (error) => {
