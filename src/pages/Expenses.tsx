@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTransactions, useCreateTransaction, useUpdateTransaction, useDeleteTransaction } from '@/hooks/useTransactions'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { usePeople } from '@/hooks/usePeople'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
-import { Plus, Pencil, Trash2, CheckCircle2, ArrowUpFromLine, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, CheckCircle2, Search, Filter, ArrowUpDown, AlertCircle, Clock, DollarSign, X } from 'lucide-react'
 import { isBefore, startOfDay, parseISO } from 'date-fns'
 
 export function Expenses() {
@@ -26,12 +26,92 @@ export function Expenses() {
 
   const today = startOfDay(new Date())
 
-  // Dynamic status logic for UI
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterStatus, setFilterStatus] = useState<string>('todos')
+  const [filterCategory, setFilterCategory] = useState<string>('todos')
+  const [filterAccount, setFilterAccount] = useState<string>('todos')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [sortField, setSortField] = useState<'due_date' | 'amount' | 'description'>('due_date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [showFilters, setShowFilters] = useState(false)
+
   const getDisplayStatus = (tx: any) => {
     if (tx.status === 'paga' || tx.status === 'cancelada') return tx.status
     const dueDate = parseISO(tx.due_date)
     return isBefore(dueDate, today) ? 'atrasada' : tx.status
   }
+
+  const filteredTransactions = useMemo(() => {
+    if (!transactions) return []
+    let result = [...transactions]
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(t => 
+        t.description.toLowerCase().includes(term) ||
+        t.category?.name?.toLowerCase().includes(term) ||
+        t.account?.name?.toLowerCase().includes(term) ||
+        t.person?.name?.toLowerCase().includes(term)
+      )
+    }
+    if (filterStatus !== 'todos') {
+      if (filterStatus === 'atrasada') {
+        result = result.filter(t => getDisplayStatus(t) === 'atrasada')
+      } else {
+        result = result.filter(t => t.status === filterStatus)
+      }
+    }
+    if (filterCategory !== 'todos') {
+      result = result.filter(t => t.category_id === filterCategory)
+    }
+    if (filterAccount !== 'todos') {
+      result = result.filter(t => t.account_id === filterAccount)
+    }
+    if (filterDateFrom) {
+      result = result.filter(t => t.due_date >= filterDateFrom)
+    }
+    if (filterDateTo) {
+      result = result.filter(t => t.due_date <= filterDateTo)
+    }
+
+    result.sort((a, b) => {
+      let cmp = 0
+      if (sortField === 'due_date') cmp = a.due_date.localeCompare(b.due_date)
+      else if (sortField === 'amount') cmp = a.amount - b.amount
+      else if (sortField === 'description') cmp = a.description.localeCompare(b.description)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+
+    return result
+  }, [transactions, searchTerm, filterStatus, filterCategory, filterAccount, filterDateFrom, filterDateTo, sortField, sortDir])
+
+  const toggleSort = (field: 'due_date' | 'amount' | 'description') => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('desc')
+    }
+  }
+
+  const clearFilters = () => {
+    setSearchTerm('')
+    setFilterStatus('todos')
+    setFilterCategory('todos')
+    setFilterAccount('todos')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+  }
+
+  const hasActiveFilters = searchTerm || filterStatus !== 'todos' || filterCategory !== 'todos' || filterAccount !== 'todos' || filterDateFrom || filterDateTo
+
+  // Summary calculations
+  const totalPagas = useMemo(() => transactions?.filter(t => t.status === 'paga').reduce((s, t) => s + t.amount, 0) || 0, [transactions])
+  const totalPendentes = useMemo(() => transactions?.filter(t => t.status === 'em_aberto').reduce((s, t) => s + t.amount, 0) || 0, [transactions])
+  const totalAtrasadas = useMemo(() => transactions?.filter(t => getDisplayStatus(t) === 'atrasada').reduce((s, t) => s + t.amount, 0) || 0, [transactions])
+  const totalGeral = useMemo(() => transactions?.reduce((s, t) => s + t.amount, 0) || 0, [transactions])
 
   const handleCreate = () => {
     setIsEditing('new')
@@ -104,8 +184,11 @@ export function Expenses() {
     return <div className="p-6">Carregando despesas...</div>
   }
 
+  const expenseCategories = categories?.filter(c => c.type === 'despesa') || []
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Despesas</h2>
@@ -117,159 +200,251 @@ export function Expenses() {
         </Button>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="border-finance-income/30 bg-finance-income/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-finance-income">Pagas</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-finance-income" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-finance-income">{formatCurrencyBRL(totalPagas)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Em Aberto</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrencyBRL(totalPendentes)}</div>
+          </CardContent>
+        </Card>
+        <Card className="border-finance-overdue/30 bg-finance-overdue/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-finance-overdue">Atrasadas</CardTitle>
+            <AlertCircle className="h-4 w-4 text-finance-overdue" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-finance-overdue">{formatCurrencyBRL(totalAtrasadas)}</div>
+          </CardContent>
+        </Card>
+        <Card className="border-finance-expense/30 bg-finance-expense/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-finance-expense">Total Geral</CardTitle>
+            <DollarSign className="h-4 w-4 text-finance-expense" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-finance-expense">{formatCurrencyBRL(totalGeral)}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search + Filter Bar */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input 
+              placeholder="Buscar por descrição, categoria, conta..." 
+              className="pl-10"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant={showFilters ? 'default' : 'outline'} 
+              size="sm"
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              <Filter className="mr-2 h-4 w-4" />
+              Filtros
+              {hasActiveFilters && <span className="ml-2 rounded-full bg-primary-foreground text-primary w-5 h-5 flex items-center justify-center text-xs font-bold">!</span>}
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="mr-1 h-4 w-4" /> Limpar
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {showFilters && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Status</label>
+              <select 
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+              >
+                <option value="todos">Todos</option>
+                <option value="em_aberto">Em Aberto</option>
+                <option value="paga">Paga</option>
+                <option value="atrasada">Atrasada</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Categoria</label>
+              <select 
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+                value={filterCategory}
+                onChange={e => setFilterCategory(e.target.value)}
+              >
+                <option value="todos">Todas</option>
+                {expenseCategories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">De</label>
+              <Input type="date" className="h-9" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Até</label>
+              <Input type="date" className="h-9" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Form (create/edit) */}
+      {isEditing && (
+        <Card className="border-primary shadow-md">
+          <CardHeader>
+            <CardTitle>{isEditing === 'new' ? 'Nova Despesa' : 'Editar Despesa'}</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Descrição</label>
+              <Input 
+                value={formData.description || ''} 
+                onChange={e => setFormData({...formData, description: e.target.value})}
+                placeholder="Ex: Aluguel, Mercado..."
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Valor</label>
+              <Input 
+                type="number" step="0.01"
+                value={formData.amount || ''} 
+                onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Vencimento</label>
+              <Input 
+                type="date"
+                value={formData.due_date || ''} 
+                onChange={e => setFormData({...formData, due_date: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Categoria</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.category_id || ''}
+                onChange={e => setFormData({...formData, category_id: e.target.value})}
+              >
+                <option value="">Selecione...</option>
+                {expenseCategories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Conta</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.account_id || ''}
+                onChange={e => setFormData({...formData, account_id: e.target.value})}
+              >
+                <option value="">Nenhuma...</option>
+                {accounts?.filter(a => a.is_active).map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Status</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.status || 'em_aberto'}
+                onChange={e => setFormData({...formData, status: e.target.value})}
+              >
+                <option value="em_aberto">Em Aberto</option>
+                <option value="paga">Paga</option>
+                <option value="atrasada">Atrasada</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Pessoa</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.person_id || ''}
+                onChange={e => setFormData({...formData, person_id: e.target.value})}
+              >
+                <option value="">Nenhuma...</option>
+                {people?.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          </CardContent>
+          <div className="flex justify-end gap-2 p-6 pt-0">
+            <Button variant="outline" onClick={() => setIsEditing(null)}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={createTx.isPending || updateTx.isPending}>
+              Salvar
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Table */}
       <Card>
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            {filteredTransactions.length} resultado{filteredTransactions.length !== 1 ? 's' : ''}
+            {hasActiveFilters ? ' (filtrado)' : ''}
+          </span>
+          <span className="text-sm font-medium">
+            Total exibido: <span className="text-finance-expense">{formatCurrencyBRL(filteredTransactions.reduce((s, t) => s + t.amount, 0))}</span>
+          </span>
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Vencimento</TableHead>
-              <TableHead>Descrição</TableHead>
+              <TableHead>
+                <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium" onClick={() => toggleSort('due_date')}>
+                  Vencimento {sortField === 'due_date' && <ArrowUpDown className="ml-1 h-3 w-3" />}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button variant="ghost" size="sm" className="h-8 -ml-3 font-medium" onClick={() => toggleSort('description')}>
+                  Descrição {sortField === 'description' && <ArrowUpDown className="ml-1 h-3 w-3" />}
+                </Button>
+              </TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Conta</TableHead>
-              <TableHead className="text-right">Valor</TableHead>
+              <TableHead className="text-right">
+                <Button variant="ghost" size="sm" className="h-8 -mr-3 font-medium" onClick={() => toggleSort('amount')}>
+                  Valor {sortField === 'amount' && <ArrowUpDown className="ml-1 h-3 w-3" />}
+                </Button>
+              </TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isEditing === 'new' && (
-              <TableRow className="bg-muted/30">
-                <TableCell>
-                  <Input 
-                    type="date"
-                    value={formData.due_date || ''} 
-                    onChange={e => setFormData({...formData, due_date: e.target.value})}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Input 
-                    value={formData.description || ''} 
-                    onChange={e => setFormData({...formData, description: e.target.value})}
-                    placeholder="Descrição"
-                    autoFocus
-                  />
-                </TableCell>
-                <TableCell>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={formData.category_id || ''}
-                    onChange={e => setFormData({...formData, category_id: e.target.value})}
-                  >
-                    <option value="">Selecione...</option>
-                    {categories?.filter(c => c.type === 'despesa').map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </TableCell>
-                <TableCell>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={formData.account_id || ''}
-                    onChange={e => setFormData({...formData, account_id: e.target.value})}
-                  >
-                    <option value="">Nenhuma conta...</option>
-                    {accounts?.filter(a => a.is_active).map(a => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                </TableCell>
-                <TableCell>
-                  <Input 
-                    type="number" 
-                    step="0.01"
-                    className="text-right"
-                    value={formData.amount || ''} 
-                    onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
-                    placeholder="0.00"
-                  />
-                </TableCell>
-                <TableCell>
-                  <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={formData.status || 'em_aberto'}
-                    onChange={e => setFormData({...formData, status: e.target.value})}
-                  >
-                    <option value="em_aberto">Em Aberto</option>
-                    <option value="paga">Paga</option>
-                    <option value="atrasada">Atrasada</option>
-                    <option value="cancelada">Cancelada</option>
-                  </select>
-                </TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button variant="outline" size="sm" onClick={() => setIsEditing(null)}>Cancelar</Button>
-                  <Button size="sm" onClick={handleSave} disabled={createTx.isPending}>Salvar</Button>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {transactions?.map((tx) => {
+            {filteredTransactions.map((tx) => {
               const displayStatus = getDisplayStatus(tx)
-              
-              return isEditing === tx.id ? (
-                <TableRow key={tx.id} className="bg-muted/30">
-                  <TableCell>
-                    <Input 
-                      type="date"
-                      value={formData.due_date || ''} 
-                      onChange={e => setFormData({...formData, due_date: e.target.value})}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input 
-                      value={formData.description || ''} 
-                      onChange={e => setFormData({...formData, description: e.target.value})}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={formData.category_id || ''}
-                      onChange={e => setFormData({...formData, category_id: e.target.value})}
-                    >
-                      <option value="">Selecione...</option>
-                      {categories?.filter(c => c.type === 'despesa').map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </TableCell>
-                  <TableCell>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={formData.account_id || ''}
-                      onChange={e => setFormData({...formData, account_id: e.target.value})}
-                    >
-                      <option value="">Nenhuma conta...</option>
-                      {accounts?.filter(a => a.is_active).map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
-                    </select>
-                  </TableCell>
-                  <TableCell>
-                    <Input 
-                      type="number" 
-                      step="0.01"
-                      className="text-right"
-                      value={formData.amount || ''} 
-                      onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <select 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={formData.status || 'em_aberto'}
-                      onChange={e => setFormData({...formData, status: e.target.value})}
-                    >
-                      <option value="em_aberto">Em Aberto</option>
-                      <option value="paga">Paga</option>
-                      <option value="atrasada">Atrasada</option>
-                      <option value="cancelada">Cancelada</option>
-                    </select>
-                  </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => setIsEditing(null)}>Cancelar</Button>
-                    <Button size="sm" onClick={handleSave} disabled={updateTx.isPending}>Salvar</Button>
-                  </TableCell>
-                </TableRow>
-              ) : (
+              return (
                 <TableRow key={tx.id} className={tx.status === 'cancelada' ? 'opacity-50' : ''}>
                   <TableCell className={displayStatus === 'atrasada' ? 'text-finance-overdue font-medium' : ''}>
                     {formatDateBR(tx.due_date)}
@@ -318,10 +493,10 @@ export function Expenses() {
               )
             })}
 
-            {transactions?.length === 0 && isEditing !== 'new' && (
+            {filteredTransactions.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  Nenhuma despesa encontrada.
+                  {hasActiveFilters ? 'Nenhum resultado encontrado para os filtros aplicados.' : 'Nenhuma despesa encontrada.'}
                 </TableCell>
               </TableRow>
             )}
