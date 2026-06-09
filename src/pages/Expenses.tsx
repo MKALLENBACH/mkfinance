@@ -111,12 +111,12 @@ export function Expenses() {
 
   // Summary calculations
   const totalPagas = useMemo(() => filteredTransactions.filter(t => t.status === 'paga').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
-  const totalAbertas = useMemo(() => filteredTransactions.filter(t => t.status === 'em_aberto' || t.status === 'prevista').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
-  const totalGeral = useMemo(() => filteredTransactions.reduce((s, t) => s + t.amount, 0), [filteredTransactions])
-  const atrasadasCount = useMemo(() => {
+  const totalPendentes = useMemo(() => filteredTransactions.filter(t => t.status === 'em_aberto' || t.status === 'prevista').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
+  const totalAtrasadas = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0]
-    return filteredTransactions.filter(t => (t.status === 'em_aberto' || t.status === 'prevista') && t.due_date < todayStr).length
+    return filteredTransactions.filter(t => (t.status === 'em_aberto' || t.status === 'prevista') && t.due_date < todayStr).reduce((s, t) => s + t.amount, 0)
   }, [filteredTransactions])
+  const totalGeral = useMemo(() => filteredTransactions.reduce((s, t) => s + t.amount, 0), [filteredTransactions])
 
   const handleCreate = () => {
     setIsEditing('new')
