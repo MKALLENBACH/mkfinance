@@ -1,23 +1,35 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useAccounts } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
+import { useTransactions } from '@/hooks/useTransactions'
 import { parseOFX, ParsedTransaction } from '@/lib/ofxParser'
 import { invalidateFinanceData } from '@/lib/queryInvalidation'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
 import { toast } from 'sonner'
-import { Upload, FileText, CheckCircle2, Trash2, Save, ArrowRight } from 'lucide-react'
+import { Upload, FileText, Save, Link as LinkIcon, Plus, XCircle, Info } from 'lucide-react'
+
+type ImportAction = 'novo' | 'vincular' | 'ignorar'
 
 type ImportableTransaction = ParsedTransaction & {
   selected: boolean
   account_id: string
   category_id: string
   status: 'em_aberto' | 'paga' | 'recebida' | 'prevista'
+  action: ImportAction
+  target_transaction_id: string | null
+  is_duplicate: boolean
+}
+
+function diffDays(a: string, b: string): number {
+  const dateA = new Date(a + 'T00:00:00')
+  const dateB = new Date(b + 'T00:00:00')
+  return Math.ceil(Math.abs(dateA.getTime() - dateB.getTime()) / (1000 * 60 * 60 * 24))
 }
 
 export function Reconciliation() {
@@ -25,6 +37,7 @@ export function Reconciliation() {
   const queryClient = useQueryClient()
   const { data: accounts } = useAccounts()
   const { data: categories } = useCategories()
+  const { data: allTransactions } = useTransactions()
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -32,9 +45,10 @@ export function Reconciliation() {
   
   const [globalAccountId, setGlobalAccountId] = useState('')
 
+  // Lógica de importação
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file || !allTransactions) return
 
     setIsProcessing(true)
     const reader = new FileReader()
@@ -44,17 +58,44 @@ export function Reconciliation() {
         const content = event.target?.result as string
         const parsed = parseOFX(content)
         
-        // Auto-categorize heuristics could go here
         const defaultAccountId = accounts?.find(a => a.is_active)?.id || ''
         
-        const mapped: ImportableTransaction[] = parsed.map(tx => ({
-          ...tx,
-          selected: true,
-          account_id: defaultAccountId,
-          category_id: '',
-          // Assuming bank transactions are already cleared
-          status: tx.type === 'receita' ? 'recebida' : 'paga'
-        }))
+        const mapped: ImportableTransaction[] = parsed.map(tx => {
+          // 1. Check for duplicates using notes
+          const ofxIdMarker = `OFX_FITID:${tx.id}`
+          const isDuplicate = allTransactions.some(dbTx => dbTx.notes?.includes(ofxIdMarker))
+          
+          let action: ImportAction = isDuplicate ? 'ignorar' : 'novo'
+          let targetId = null
+
+          // 2. Auto-match with pending transactions
+          if (!isDuplicate) {
+            const possibleMatches = allTransactions.filter(dbTx => {
+              const isSameType = dbTx.type === tx.type
+              const isPending = dbTx.status === 'em_aberto' || dbTx.status === 'prevista'
+              const isSameAmount = dbTx.amount === tx.amount
+              const isDateClose = diffDays(dbTx.due_date, tx.date) <= 3 // tolerância de 3 dias
+              
+              return isSameType && isPending && isSameAmount && isDateClose
+            })
+
+            if (possibleMatches.length > 0) {
+              action = 'vincular'
+              targetId = possibleMatches[0].id
+            }
+          }
+
+          return {
+            ...tx,
+            selected: !isDuplicate, // desmarca os que já foram importados
+            account_id: defaultAccountId,
+            category_id: '',
+            status: tx.type === 'receita' ? 'recebida' : 'paga',
+            action,
+            target_transaction_id: targetId,
+            is_duplicate: isDuplicate
+          }
+        })
         
         setImportableTxs(mapped)
         setGlobalAccountId(defaultAccountId)
@@ -82,7 +123,7 @@ export function Reconciliation() {
 
   const applyGlobalAccount = (accountId: string) => {
     setGlobalAccountId(accountId)
-    setImportableTxs(prev => prev.map(tx => ({ ...tx, account_id: accountId })))
+    setImportableTxs(prev => prev.map(tx => tx.is_duplicate ? tx : { ...tx, account_id: accountId }))
   }
 
   const toggleSelection = (index: number) => {
@@ -101,27 +142,51 @@ export function Reconciliation() {
     mutationFn: async (txsToImport: ImportableTransaction[]) => {
       if (!user) throw new Error('Not authenticated')
 
-      const payload = txsToImport.map(tx => ({
-        user_id: user.id,
-        type: tx.type,
-        description: tx.description,
-        amount: tx.amount,
-        due_date: tx.date,
-        paid_at: tx.date,
-        status: tx.status,
-        account_id: tx.account_id || null,
-        category_id: tx.category_id || null,
-      }))
+      const novosParaInserir = []
+      
+      for (const tx of txsToImport) {
+        const ofxMarker = `OFX_FITID:${tx.id}`
+        
+        if (tx.action === 'vincular' && tx.target_transaction_id) {
+          // Busca a transação existente para manter as notas anteriores (se houver)
+          const target = allTransactions?.find(t => t.id === tx.target_transaction_id)
+          const newNotes = target?.notes ? `${target.notes}\n${ofxMarker}` : ofxMarker
 
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert(payload)
+          await supabase
+            .from('transactions')
+            .update({
+              status: tx.type === 'receita' ? 'recebida' : 'paga',
+              paid_at: tx.date,
+              notes: newNotes,
+              // Opcional: Atualizar conta se o usuário mudou no combobox
+              account_id: tx.account_id || target?.account_id
+            })
+            .eq('id', tx.target_transaction_id)
+        } else if (tx.action === 'novo') {
+          novosParaInserir.push({
+            user_id: user.id,
+            type: tx.type,
+            description: tx.description,
+            amount: tx.amount,
+            due_date: tx.date,
+            paid_at: tx.date,
+            status: tx.type === 'receita' ? 'recebida' : 'paga',
+            account_id: tx.account_id || null,
+            category_id: tx.category_id || null,
+            notes: ofxMarker
+          })
+        }
+      }
 
-      if (error) throw error
-      return data
+      if (novosParaInserir.length > 0) {
+        const { error } = await supabase.from('transactions').insert(novosParaInserir)
+        if (error) throw error
+      }
+      
+      return true
     },
-    onSuccess: (_, variables) => {
-      toast.success(`${variables.length} transações importadas com sucesso!`)
+    onSuccess: () => {
+      toast.success(`Conciliação concluída com sucesso!`)
       setImportableTxs([])
       if (fileInputRef.current) fileInputRef.current.value = ''
       invalidateFinanceData(queryClient)
@@ -132,23 +197,35 @@ export function Reconciliation() {
   })
 
   const handleImport = () => {
-    const toImport = importableTxs.filter(tx => tx.selected)
+    // Filtramos apenas os que estão selecionados E que a ação não é ignorar
+    const toImport = importableTxs.filter(tx => tx.selected && tx.action !== 'ignorar')
     
     if (toImport.length === 0) {
-      toast.error('Selecione pelo menos uma transação para importar.')
+      toast.error('Nenhuma transação válida selecionada para importar/vincular.')
       return
     }
 
-    const missingAccounts = toImport.filter(tx => !tx.account_id)
+    const missingAccounts = toImport.filter(tx => tx.action === 'novo' && !tx.account_id)
     if (missingAccounts.length > 0) {
-      toast.error('Todas as transações selecionadas precisam estar vinculadas a uma conta.')
+      toast.error('Transações marcadas como "Novo" precisam estar vinculadas a uma conta bancária.')
+      return
+    }
+
+    const missingTargets = toImport.filter(tx => tx.action === 'vincular' && !tx.target_transaction_id)
+    if (missingTargets.length > 0) {
+      toast.error('Transações marcadas como "Vincular" precisam ter um lançamento de destino selecionado.')
       return
     }
 
     importMutation.mutate(toImport)
   }
 
-  const selectedCount = importableTxs.filter(tx => tx.selected).length
+  const selectedCount = importableTxs.filter(tx => tx.selected && tx.action !== 'ignorar').length
+  
+  // Opções para vincular
+  const pendingTransactions = useMemo(() => {
+    return allTransactions?.filter(t => t.status === 'em_aberto' || t.status === 'prevista') || []
+  }, [allTransactions])
 
   return (
     <div className="space-y-6">
@@ -230,25 +307,30 @@ export function Reconciliation() {
                 <TableHead>Data</TableHead>
                 <TableHead>Descrição (Banco)</TableHead>
                 <TableHead>Tipo</TableHead>
-                <TableHead>Conta</TableHead>
+                <TableHead>Ação</TableHead>
+                <TableHead>Conta / Destino</TableHead>
                 <TableHead>Categoria</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {importableTxs.map((tx, index) => (
-                <TableRow key={index} className={!tx.selected ? 'opacity-50 bg-muted/20' : ''}>
+                <TableRow key={index} className={!tx.selected || tx.action === 'ignorar' ? 'opacity-50 bg-muted/20' : ''}>
                   <TableCell className="text-center">
                     <input 
                       type="checkbox" 
                       checked={tx.selected}
                       onChange={() => toggleSelection(index)}
-                      className="rounded border-gray-300 text-primary focus:ring-primary"
+                      disabled={tx.action === 'ignorar' || tx.is_duplicate}
+                      className="rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50"
                     />
                   </TableCell>
                   <TableCell>{formatDateBR(tx.date)}</TableCell>
                   <TableCell className="max-w-[200px] truncate" title={tx.description}>
-                    {tx.description}
+                    <div className="flex items-center gap-2">
+                      {tx.is_duplicate && <Info className="h-3 w-3 text-muted-foreground" title="Transação já importada anteriormente" />}
+                      {tx.description}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -259,27 +341,73 @@ export function Reconciliation() {
                   </TableCell>
                   <TableCell>
                     <select 
-                      className="flex h-8 w-full max-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs"
-                      value={tx.account_id}
-                      onChange={(e) => updateTxField(index, 'account_id', e.target.value)}
+                      className="flex h-8 w-[110px] rounded-md border border-input bg-background px-2 py-1 text-xs disabled:opacity-50"
+                      value={tx.action}
+                      disabled={tx.is_duplicate}
+                      onChange={(e) => {
+                        const newAction = e.target.value as ImportAction
+                        updateTxField(index, 'action', newAction)
+                        if (newAction === 'ignorar') {
+                          updateTxField(index, 'selected', false)
+                        } else {
+                          updateTxField(index, 'selected', true)
+                        }
+                      }}
                     >
-                      <option value="">Selecione...</option>
-                      {accounts?.filter(a => a.is_active).map(a => (
-                        <option key={a.id} value={a.id}>{a.name}</option>
-                      ))}
+                      <option value="novo">Novo Lanç.</option>
+                      <option value="vincular">Vincular</option>
+                      <option value="ignorar">Ignorar</option>
                     </select>
                   </TableCell>
                   <TableCell>
-                    <select 
-                      className="flex h-8 w-full max-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs"
-                      value={tx.category_id}
-                      onChange={(e) => updateTxField(index, 'category_id', e.target.value)}
-                    >
-                      <option value="">Sem categoria</option>
-                      {categories?.filter(c => c.type === tx.type).map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                    {tx.action === 'novo' && (
+                      <select 
+                        className="flex h-8 w-full max-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs"
+                        value={tx.account_id}
+                        onChange={(e) => updateTxField(index, 'account_id', e.target.value)}
+                      >
+                        <option value="">Conta...</option>
+                        {accounts?.filter(a => a.is_active).map(a => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </select>
+                    )}
+                    {tx.action === 'vincular' && (
+                      <select 
+                        className="flex h-8 w-full max-w-[200px] rounded-md border border-input bg-background px-2 py-1 text-xs"
+                        value={tx.target_transaction_id || ''}
+                        onChange={(e) => updateTxField(index, 'target_transaction_id', e.target.value)}
+                      >
+                        <option value="">Selecione para vincular...</option>
+                        {pendingTransactions
+                          .filter(pt => pt.type === tx.type)
+                          .map(pt => (
+                            <option key={pt.id} value={pt.id}>
+                              {formatDateBR(pt.due_date)} - {pt.description} ({formatCurrencyBRL(pt.amount)})
+                            </option>
+                          ))
+                        }
+                      </select>
+                    )}
+                    {tx.action === 'ignorar' && (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {tx.action === 'novo' ? (
+                      <select 
+                        className="flex h-8 w-full max-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs"
+                        value={tx.category_id}
+                        onChange={(e) => updateTxField(index, 'category_id', e.target.value)}
+                      >
+                        <option value="">Sem categoria</option>
+                        {categories?.filter(c => c.type === tx.type).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell className={`text-right font-medium ${tx.type === 'receita' ? 'text-finance-income' : 'text-finance-expense'}`}>
                     {formatCurrencyBRL(tx.amount)}
