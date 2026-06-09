@@ -29,3 +29,14 @@ export function parseCurrencyInput(value: string): number {
   // Converte para número e divide por 100 para ter as casas decimais corretas
   return parseInt(digitsOnly, 10) / 100
 }
+
+export function formatDateBR(dateString: string | null | undefined): string {
+  if (!dateString) return '-'
+  try {
+    // Para datas YYYY-MM-DD, evita problemas de timezone adicionando meio-dia ou tratando como UTC
+    const date = new Date(dateString.includes('T') ? dateString : `${dateString}T12:00:00`)
+    return new Intl.DateTimeFormat('pt-BR').format(date)
+  } catch (e) {
+    return '-'
+  }
+}
