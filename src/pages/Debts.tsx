@@ -191,7 +191,7 @@ export function Debts() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Parcela Mensal</label>
+              <label className="text-sm font-medium">Valor da Parcela (Mensal/Semanal)</label>
               <Input 
                 type="number" step="0.01"
                 placeholder="Valor da parcela"
@@ -200,13 +200,28 @@ export function Debts() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Dia de Vencimento</label>
-              <Input 
-                type="number" min={1} max={31}
-                placeholder="Ex: 10 (dia 10 de cada mês)"
+              <label className="text-sm font-medium">Frequência / Vencimento</label>
+              <select 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={formData.due_day || ''} 
                 onChange={e => setFormData({...formData, due_day: e.target.value})}
-              />
+              >
+                <option value="">Selecione...</option>
+                <optgroup label="Mensal">
+                  {[...Array(31)].map((_, i) => (
+                    <option key={`m-${i+1}`} value={i+1}>Todo dia {i+1} do mês</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Semanal">
+                  <option value="101">Toda Segunda-feira</option>
+                  <option value="102">Toda Terça-feira</option>
+                  <option value="103">Toda Quarta-feira</option>
+                  <option value="104">Toda Quinta-feira</option>
+                  <option value="105">Toda Sexta-feira</option>
+                  <option value="106">Todo Sábado</option>
+                  <option value="100">Todo Domingo</option>
+                </optgroup>
+              </select>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Data Alvo para Quitação (opcional)</label>
