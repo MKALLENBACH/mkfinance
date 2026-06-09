@@ -50,30 +50,63 @@ export function useCreateDebt() {
 
       if (error) throw error
 
-      // 2. If a monthly payment is set, auto-create the next upcoming expense transaction
+      // 2. If a monthly payment is set, auto-create all upcoming expense transactions
       if (data && data.monthly_payment && data.monthly_payment > 0) {
         const today = new Date()
         const dueDay = data.due_day || today.getDate()
 
-        // Calculate next due date: if the due day this month is already past, go to next month
-        let dueDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
-        if (dueDate < today) {
-          dueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay)
+        let currentAmount = data.current_amount
+        let monthlyPayment = data.monthly_payment
+        let numInstallments = Math.ceil(currentAmount / monthlyPayment)
+        if (numInstallments > 360) numInstallments = 360
+
+        const transactionsToInsert = []
+        let currentMonthOffset = 0
+        
+        // Initial check: if due day this month already passed, start from next month
+        const thisMonthDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
+        if (thisMonthDate < today) {
+           currentMonthOffset = 1
         }
 
-        const dueDateStr = dueDate.toISOString().split('T')[0]
+        for (let i = 1; i <= numInstallments; i++) {
+          let amount = monthlyPayment
+          if (i === numInstallments) {
+              const remainder = currentAmount - (monthlyPayment * (numInstallments - 1))
+              if (remainder > 0 && remainder <= monthlyPayment) {
+                  amount = remainder
+              }
+          }
 
-        await supabase.from('transactions').insert([{
-          user_id: user.id,
-          type: 'despesa' as const,
-          description: `Parcela: ${data.name}`,
-          amount: data.monthly_payment,
-          due_date: dueDateStr,
-          status: 'em_aberto' as const,
-          is_fixed: true,
-          person_id: data.creditor_id || null,
-          notes: `Gerado automaticamente pela dívida: ${data.name}`,
-        }])
+          // Calculate date
+          const targetMonth = today.getMonth() + currentMonthOffset + (i - 1)
+          let date = new Date(today.getFullYear(), targetMonth, dueDay)
+          // Handle day overflow (e.g., Feb 31 -> Mar 3 -> fix to Feb 28/29)
+          if (date.getDate() !== dueDay) {
+             date = new Date(today.getFullYear(), targetMonth + 1, 0)
+          }
+
+          const dueDateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
+
+          transactionsToInsert.push({
+            user_id: user.id,
+            type: 'despesa' as const,
+            description: `Parcela ${i}/${numInstallments}: ${data.name}`,
+            amount: amount,
+            due_date: dueDateStr,
+            status: 'em_aberto' as const,
+            is_fixed: true,
+            person_id: data.creditor_id || null,
+            notes: `Gerado automaticamente pela dívida: ${data.name}`,
+            installment_group_id: data.id,
+            installment_number: i,
+            installment_total: numInstallments
+          })
+        }
+
+        if (transactionsToInsert.length > 0) {
+          await supabase.from('transactions').insert(transactionsToInsert)
+        }
       }
 
       return data
@@ -118,6 +151,13 @@ export function useDeleteDebt() {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      // Delete pending transactions related to this debt
+      await supabase
+        .from('transactions')
+        .delete()
+        .eq('installment_group_id', id)
+        .eq('status', 'em_aberto')
+
       const { error } = await supabase
         .from('debts')
         .delete()
@@ -156,21 +196,45 @@ export function useRegisterDebtPayment() {
     }) => {
       if (!user) throw new Error('Not authenticated')
 
-      // 1. Create a paid expense transaction
-      const { error: txError } = await supabase
+      // 1. Find the oldest pending installment for this debt
+      const { data: pendingTx } = await supabase
         .from('transactions')
-        .insert([{
-          user_id: user.id,
-          type: 'despesa',
-          description,
-          amount,
-          due_date: new Date().toISOString().split('T')[0],
-          paid_at: new Date().toISOString().split('T')[0],
-          status: 'paga',
-          account_id: accountId,
-        }])
+        .select('*')
+        .eq('installment_group_id', debtId)
+        .eq('status', 'em_aberto')
+        .order('due_date', { ascending: true })
+        .limit(1)
+        .maybeSingle()
 
-      if (txError) throw txError
+      if (pendingTx) {
+        // Update the existing pending transaction
+        const { error: txError } = await supabase
+          .from('transactions')
+          .update({
+            amount,
+            paid_at: new Date().toISOString().split('T')[0],
+            status: 'paga',
+            account_id: accountId,
+          })
+          .eq('id', pendingTx.id)
+        if (txError) throw txError
+      } else {
+        // Create a new paid expense transaction if no pending installment is found
+        const { error: txError } = await supabase
+          .from('transactions')
+          .insert([{
+            user_id: user.id,
+            type: 'despesa',
+            description,
+            amount,
+            due_date: new Date().toISOString().split('T')[0],
+            paid_at: new Date().toISOString().split('T')[0],
+            status: 'paga',
+            account_id: accountId,
+            installment_group_id: debtId,
+          }])
+        if (txError) throw txError
+      }
 
       // 2. Reduce the debt amount
       const newAmount = Math.max(0, currentDebtAmount - amount)
