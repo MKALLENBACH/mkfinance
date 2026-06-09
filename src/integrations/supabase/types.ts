@@ -215,8 +215,10 @@ export interface Database {
           year: number
           month: number
           expected_income: number
-          expected_expenses: number
-          savings_goal: number
+          planned_fixed_expenses: number
+          planned_variable_expenses: number
+          planned_debt_payments: number
+          planned_savings: number
           notes: string | null
           created_at: string | null
           updated_at: string | null
@@ -227,8 +229,10 @@ export interface Database {
           year: number
           month: number
           expected_income?: number
-          expected_expenses?: number
-          savings_goal?: number
+          planned_fixed_expenses?: number
+          planned_variable_expenses?: number
+          planned_debt_payments?: number
+          planned_savings?: number
           notes?: string | null
           created_at?: string | null
           updated_at?: string | null
@@ -239,8 +243,10 @@ export interface Database {
           year?: number
           month?: number
           expected_income?: number
-          expected_expenses?: number
-          savings_goal?: number
+          planned_fixed_expenses?: number
+          planned_variable_expenses?: number
+          planned_debt_payments?: number
+          planned_savings?: number
           notes?: string | null
           created_at?: string | null
           updated_at?: string | null

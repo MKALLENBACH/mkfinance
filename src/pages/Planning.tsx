@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatCurrencyBRL } from '@/lib/formatters'
-import { Target, TrendingUp, TrendingDown, Save } from 'lucide-react'
+import { Target, TrendingUp, TrendingDown, Save, Landmark, CreditCard, PiggyBank } from 'lucide-react'
 
 const meses = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
@@ -26,8 +26,10 @@ export function Planning() {
   
   const [formData, setFormData] = useState({
     expected_income: 0,
-    expected_expenses: 0,
-    savings_goal: 0,
+    planned_fixed_expenses: 0,
+    planned_variable_expenses: 0,
+    planned_debt_payments: 0,
+    planned_savings: 0,
     notes: ''
   })
 
@@ -36,15 +38,19 @@ export function Planning() {
     if (plan) {
       setFormData({
         expected_income: plan.expected_income,
-        expected_expenses: plan.expected_expenses,
-        savings_goal: plan.savings_goal,
+        planned_fixed_expenses: plan.planned_fixed_expenses,
+        planned_variable_expenses: plan.planned_variable_expenses,
+        planned_debt_payments: plan.planned_debt_payments,
+        planned_savings: plan.planned_savings,
         notes: plan.notes || ''
       })
     } else {
       setFormData({
         expected_income: 0,
-        expected_expenses: 0,
-        savings_goal: 0,
+        planned_fixed_expenses: 0,
+        planned_variable_expenses: 0,
+        planned_debt_payments: 0,
+        planned_savings: 0,
         notes: ''
       })
     }
@@ -64,16 +70,19 @@ export function Planning() {
       year: selectedYear,
       month: selectedMonth,
       expected_income: formData.expected_income,
-      expected_expenses: formData.expected_expenses,
-      savings_goal: formData.savings_goal,
+      planned_fixed_expenses: formData.planned_fixed_expenses,
+      planned_variable_expenses: formData.planned_variable_expenses,
+      planned_debt_payments: formData.planned_debt_payments,
+      planned_savings: formData.planned_savings,
       notes: formData.notes
     })
   }
 
   // Helper calculations
-  const expectedBalance = formData.expected_income - formData.expected_expenses
+  const totalPlannedExpenses = formData.planned_fixed_expenses + formData.planned_variable_expenses + formData.planned_debt_payments
+  const expectedBalance = formData.expected_income - totalPlannedExpenses
   const diffIncome = realIncome - formData.expected_income
-  const diffExpenses = realExpenses - formData.expected_expenses
+  const diffExpenses = realExpenses - totalPlannedExpenses
 
   return (
     <div className="space-y-6">
@@ -126,13 +135,37 @@ export function Planning() {
             </div>
             
             <div className="space-y-2">
-              <label className="text-sm font-medium">Despesa Esperada (Teto de Gastos)</label>
+              <label className="text-sm font-medium">Despesas Fixas (Aluguel, Contas, Seguros...)</label>
               <div className="relative">
-                <TrendingDown className="absolute left-2.5 top-2.5 h-4 w-4 text-finance-expense" />
+                <Landmark className="absolute left-2.5 top-2.5 h-4 w-4 text-finance-expense" />
                 <Input 
                   type="number" step="0.01" className="pl-9"
-                  value={formData.expected_expenses || ''}
-                  onChange={e => setFormData({...formData, expected_expenses: parseFloat(e.target.value) || 0})}
+                  value={formData.planned_fixed_expenses || ''}
+                  onChange={e => setFormData({...formData, planned_fixed_expenses: parseFloat(e.target.value) || 0})}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Despesas Variáveis (Mercado, Lazer, Transporte...)</label>
+              <div className="relative">
+                <CreditCard className="absolute left-2.5 top-2.5 h-4 w-4 text-finance-overdue" />
+                <Input 
+                  type="number" step="0.01" className="pl-9"
+                  value={formData.planned_variable_expenses || ''}
+                  onChange={e => setFormData({...formData, planned_variable_expenses: parseFloat(e.target.value) || 0})}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Parcelas de Dívidas</label>
+              <div className="relative">
+                <TrendingDown className="absolute left-2.5 top-2.5 h-4 w-4 text-destructive" />
+                <Input 
+                  type="number" step="0.01" className="pl-9"
+                  value={formData.planned_debt_payments || ''}
+                  onChange={e => setFormData({...formData, planned_debt_payments: parseFloat(e.target.value) || 0})}
                 />
               </div>
             </div>
@@ -140,11 +173,11 @@ export function Planning() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Meta de Economia (Caixinha/Investimento)</label>
               <div className="relative">
-                <Target className="absolute left-2.5 top-2.5 h-4 w-4 text-finance-balance" />
+                <PiggyBank className="absolute left-2.5 top-2.5 h-4 w-4 text-finance-balance" />
                 <Input 
                   type="number" step="0.01" className="pl-9"
-                  value={formData.savings_goal || ''}
-                  onChange={e => setFormData({...formData, savings_goal: parseFloat(e.target.value) || 0})}
+                  value={formData.planned_savings || ''}
+                  onChange={e => setFormData({...formData, planned_savings: parseFloat(e.target.value) || 0})}
                 />
               </div>
             </div>
@@ -176,20 +209,41 @@ export function Planning() {
               <CardDescription>Comparação com o que já aconteceu.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Resumo do Orçamento Planejado */}
+              <div className="p-4 rounded-lg bg-muted/50 border space-y-2">
+                <p className="text-sm font-medium mb-3">Resumo do Orçamento</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Desp. Fixas</span>
+                  <span className="text-finance-expense">{formatCurrencyBRL(formData.planned_fixed_expenses)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Desp. Variáveis</span>
+                  <span className="text-finance-overdue">{formatCurrencyBRL(formData.planned_variable_expenses)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Parcelas Dívidas</span>
+                  <span className="text-destructive">{formatCurrencyBRL(formData.planned_debt_payments)}</span>
+                </div>
+                <div className="border-t pt-2 flex justify-between text-sm font-medium">
+                  <span>Total Despesas Planejadas</span>
+                  <span className="text-finance-expense">{formatCurrencyBRL(totalPlannedExpenses)}</span>
+                </div>
+              </div>
+
               {/* Resultado Previsto */}
               <div className="p-4 rounded-lg bg-muted/50 border">
-                <p className="text-sm text-muted-foreground mb-1">Sobra Prevista (Receita Esperada - Despesa Esperada)</p>
+                <p className="text-sm text-muted-foreground mb-1">Sobra Prevista (Receita - Despesas Planejadas)</p>
                 <div className="flex items-center justify-between">
                   <p className={`text-2xl font-bold ${expectedBalance >= 0 ? 'text-finance-balance' : 'text-finance-expense'}`}>
                     {formatCurrencyBRL(expectedBalance)}
                   </p>
-                  {expectedBalance >= formData.savings_goal && formData.savings_goal > 0 ? (
+                  {expectedBalance >= formData.planned_savings && formData.planned_savings > 0 ? (
                     <span className="text-xs text-finance-income font-medium bg-finance-income/10 px-2 py-1 rounded">
                       Cobre a meta de economia!
                     </span>
-                  ) : formData.savings_goal > 0 ? (
+                  ) : formData.planned_savings > 0 ? (
                     <span className="text-xs text-finance-overdue font-medium bg-finance-overdue/10 px-2 py-1 rounded">
-                      Falta R$ {(formData.savings_goal - expectedBalance).toFixed(2)} para cobrir a meta.
+                      Falta {formatCurrencyBRL(formData.planned_savings - expectedBalance)} para cobrir a meta.
                     </span>
                   ) : null}
                 </div>
@@ -216,13 +270,13 @@ export function Planning() {
                   <div className="flex justify-between text-sm">
                     <span className="font-medium">Despesas (Real vs Teto)</span>
                     <span className={diffExpenses <= 0 ? 'text-finance-income' : 'text-finance-expense'}>
-                      {formatCurrencyBRL(realExpenses)} / {formatCurrencyBRL(formData.expected_expenses)}
+                      {formatCurrencyBRL(realExpenses)} / {formatCurrencyBRL(totalPlannedExpenses)}
                     </span>
                   </div>
                   <div className="h-2 w-full bg-muted rounded-full overflow-hidden flex">
                     <div 
                       className={`h-full transition-all ${diffExpenses > 0 ? 'bg-destructive' : 'bg-finance-expense'}`}
-                      style={{ width: `${Math.min(100, formData.expected_expenses ? (realExpenses / formData.expected_expenses) * 100 : 0)}%` }}
+                      style={{ width: `${Math.min(100, totalPlannedExpenses ? (realExpenses / totalPlannedExpenses) * 100 : 0)}%` }}
                     />
                   </div>
                   {diffExpenses > 0 && (
@@ -242,13 +296,13 @@ export function Planning() {
                 {formatCurrencyBRL(realBalance)}
               </p>
               
-              {formData.savings_goal > 0 && (
+              {formData.planned_savings > 0 && (
                 <p className="text-sm mt-2 font-medium">
                   Status da Meta de Economia: {' '}
-                  {realBalance >= formData.savings_goal ? (
+                  {realBalance >= formData.planned_savings ? (
                     <span className="text-finance-income">Atingida! Você já pode guardar o dinheiro.</span>
                   ) : (
-                    <span className="text-finance-overdue">Ainda faltam {formatCurrencyBRL(formData.savings_goal - realBalance)}.</span>
+                    <span className="text-finance-overdue">Ainda faltam {formatCurrencyBRL(formData.planned_savings - realBalance)}.</span>
                   )}
                 </p>
               )}
