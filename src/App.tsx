@@ -14,6 +14,7 @@ import { Accounts } from './pages/Accounts'
 import { Revenues } from './pages/Revenues'
 import { Expenses } from './pages/Expenses'
 import { Debts } from './pages/Debts'
+import { FixedTransactions } from './pages/FixedTransactions'
 import { Planning } from './pages/Planning'
 import { CashFlow } from './pages/CashFlow'
 import { Calendar } from './pages/Calendar'
@@ -52,6 +53,7 @@ function App() {
                 <Route path="/receitas" element={<Revenues />} />
                 <Route path="/despesas" element={<Expenses />} />
                 <Route path="/dividas" element={<Debts />} />
+                <Route path="/fixos" element={<FixedTransactions />} />
                 <Route path="/planejamento" element={<Planning />} />
                 <Route path="/fluxo-caixa" element={<CashFlow />} />
                 <Route path="/calendario" element={<Calendar />} />

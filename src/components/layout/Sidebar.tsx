@@ -22,6 +22,7 @@ const navItems = [
   { name: 'Receitas', href: '/receitas', icon: ArrowDownToLine },
   { name: 'Despesas', href: '/despesas', icon: ArrowUpFromLine },
   { name: 'Dívidas', href: '/dividas', icon: TrendingDown },
+  { name: 'Lançamentos Fixos', href: '/fixos', icon: RefreshCcw },
   { name: 'Planejamento', href: '/planejamento', icon: ListTodo },
   { name: 'Fluxo de Caixa', href: '/fluxo-caixa', icon: BarChart3 },
   { name: 'Calendário', href: '/calendario', icon: CalendarDays },
