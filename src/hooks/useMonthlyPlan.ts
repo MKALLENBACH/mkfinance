@@ -40,20 +40,22 @@ export function useSaveMonthlyPlan() {
 
       if (plan.id) {
         // Update
+        const { id, ...updateData } = plan
         const { data, error } = await supabase
           .from('monthly_plans')
-          .update(plan)
-          .eq('id', plan.id)
+          .update(updateData)
+          .eq('id', id)
           .select()
           .single()
 
         if (error) throw error
         return data
       } else {
-        // Insert
+        // Insert — remove id para o banco gerar automaticamente
+        const { id, ...insertData } = plan
         const { data, error } = await supabase
           .from('monthly_plans')
-          .insert([{ ...plan, user_id: user.id }])
+          .insert([{ ...insertData, user_id: user.id }])
           .select()
           .single()
 
