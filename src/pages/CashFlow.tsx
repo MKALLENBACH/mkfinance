@@ -33,7 +33,7 @@ import {
   BarChart3
 } from 'lucide-react'
 
-type PeriodPreset = '7d' | '15d' | '30d' | '60d' | '90d' | 'custom'
+type PeriodPreset = 'hoje' | '7d' | '15d' | '30d' | '60d' | '90d' | 'custom'
 type ViewTab = 'resumo' | 'a_vencer' | 'a_receber' | 'atrasados'
 
 function addDays(date: Date, days: number): Date {
@@ -56,7 +56,7 @@ export function CashFlow() {
   const today = new Date()
   const todayStr = toDateStr(today)
 
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('30d')
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('hoje')
   const [customStart, setCustomStart] = useState(todayStr)
   const [customEnd, setCustomEnd] = useState(toDateStr(addDays(today, 30)))
   const [activeTab, setActiveTab] = useState<ViewTab>('resumo')
@@ -66,6 +66,9 @@ export function CashFlow() {
 
   // Calculate period based on preset
   const { startDate, endDate } = useMemo(() => {
+    if (periodPreset === 'hoje') {
+      return { startDate: todayStr, endDate: todayStr }
+    }
     if (periodPreset === 'custom') {
       return { startDate: customStart, endDate: customEnd }
     }
@@ -165,6 +168,7 @@ export function CashFlow() {
   }
 
   const presetButtons: { key: PeriodPreset; label: string }[] = [
+    { key: 'hoje', label: 'Hoje' },
     { key: '7d', label: '7 dias' },
     { key: '15d', label: '15 dias' },
     { key: '30d', label: '30 dias' },

@@ -208,6 +208,44 @@ export interface Database {
           updated_at?: string | null
         }
       }
+      monthly_plans: {
+        Row: {
+          id: string
+          user_id: string
+          year: number
+          month: number
+          expected_income: number
+          expected_expenses: number
+          savings_goal: number
+          notes: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          year: number
+          month: number
+          expected_income?: number
+          expected_expenses?: number
+          savings_goal?: number
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          year?: number
+          month?: number
+          expected_income?: number
+          expected_expenses?: number
+          savings_goal?: number
+          notes?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+      }
       debts: {
         Row: {
           id: string

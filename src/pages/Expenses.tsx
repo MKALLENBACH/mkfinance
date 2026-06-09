@@ -31,8 +31,9 @@ export function Expenses() {
   const [filterStatus, setFilterStatus] = useState<string>('todos')
   const [filterCategory, setFilterCategory] = useState<string>('todos')
   const [filterAccount, setFilterAccount] = useState<string>('todos')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo, setFilterDateTo] = useState('')
+  const todayStr = new Date().toISOString().split('T')[0]
+  const [filterDateFrom, setFilterDateFrom] = useState(todayStr)
+  const [filterDateTo, setFilterDateTo] = useState(todayStr)
   const [sortField, setSortField] = useState<'due_date' | 'amount' | 'description'>('due_date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [showFilters, setShowFilters] = useState(false)
@@ -57,8 +58,9 @@ export function Expenses() {
       )
     }
     if (filterStatus !== 'todos') {
-      if (filterStatus === 'atrasada') {
-        result = result.filter(t => getDisplayStatus(t) === 'atrasada')
+      if (filterStatus === 'atrasadas') {
+        const todayStr = new Date().toISOString().split('T')[0]
+        result = result.filter(t => (t.status === 'em_aberto' || t.status === 'prevista') && t.due_date < todayStr)
       } else {
         result = result.filter(t => t.status === filterStatus)
       }
@@ -108,10 +110,13 @@ export function Expenses() {
   const hasActiveFilters = searchTerm || filterStatus !== 'todos' || filterCategory !== 'todos' || filterAccount !== 'todos' || filterDateFrom || filterDateTo
 
   // Summary calculations
-  const totalPagas = useMemo(() => transactions?.filter(t => t.status === 'paga').reduce((s, t) => s + t.amount, 0) || 0, [transactions])
-  const totalPendentes = useMemo(() => transactions?.filter(t => t.status === 'em_aberto').reduce((s, t) => s + t.amount, 0) || 0, [transactions])
-  const totalAtrasadas = useMemo(() => transactions?.filter(t => getDisplayStatus(t) === 'atrasada').reduce((s, t) => s + t.amount, 0) || 0, [transactions])
-  const totalGeral = useMemo(() => transactions?.reduce((s, t) => s + t.amount, 0) || 0, [transactions])
+  const totalPagas = useMemo(() => filteredTransactions.filter(t => t.status === 'paga').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
+  const totalAbertas = useMemo(() => filteredTransactions.filter(t => t.status === 'em_aberto' || t.status === 'prevista').reduce((s, t) => s + t.amount, 0), [filteredTransactions])
+  const totalGeral = useMemo(() => filteredTransactions.reduce((s, t) => s + t.amount, 0), [filteredTransactions])
+  const atrasadasCount = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0]
+    return filteredTransactions.filter(t => (t.status === 'em_aberto' || t.status === 'prevista') && t.due_date < todayStr).length
+  }, [filteredTransactions])
 
   const handleCreate = () => {
     setIsEditing('new')
