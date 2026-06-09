@@ -9,6 +9,83 @@ type Debt = Database['public']['Tables']['debts']['Row']
 type InsertDebt = Database['public']['Tables']['debts']['Insert']
 type UpdateDebt = Database['public']['Tables']['debts']['Update']
 
+async function generateInstallmentTransactions(debtData: any, userId: string) {
+  if (debtData && debtData.monthly_payment && debtData.monthly_payment > 0 && debtData.due_day !== null) {
+    const today = new Date()
+    const dueDay = debtData.due_day
+
+    let currentAmount = debtData.current_amount
+    let installmentAmount = debtData.monthly_payment
+    let numInstallments = Math.ceil(currentAmount / installmentAmount)
+    if (numInstallments > 500) numInstallments = 500
+
+    const transactionsToInsert = []
+    
+    const isWeekly = dueDay >= 100;
+    const targetWeekday = isWeekly ? dueDay - 100 : 0;
+    
+    let currentDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    
+    let currentMonthOffset = 0;
+    if (isWeekly) {
+        let currentDay = currentDate.getDay();
+        let daysUntilTarget = targetWeekday - currentDay;
+        if (daysUntilTarget < 0) {
+            daysUntilTarget += 7;
+        }
+        currentDate.setDate(currentDate.getDate() + daysUntilTarget);
+    } else {
+        const thisMonthDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
+        if (thisMonthDate < today) {
+           currentMonthOffset = 1
+        }
+    }
+
+    for (let i = 1; i <= numInstallments; i++) {
+      let amount = installmentAmount
+      if (i === numInstallments) {
+          const remainder = currentAmount - (installmentAmount * (numInstallments - 1))
+          if (remainder > 0 && remainder <= installmentAmount) {
+              amount = remainder
+          }
+      }
+
+      let dateToInsert: Date;
+      if (isWeekly) {
+          dateToInsert = new Date(currentDate);
+          currentDate.setDate(currentDate.getDate() + 7);
+      } else {
+          const targetMonth = today.getMonth() + currentMonthOffset + (i - 1)
+          dateToInsert = new Date(today.getFullYear(), targetMonth, dueDay)
+          if (dateToInsert.getDate() !== dueDay) {
+             dateToInsert = new Date(today.getFullYear(), targetMonth + 1, 0)
+          }
+      }
+
+      const dueDateStr = dateToInsert.getFullYear() + '-' + String(dateToInsert.getMonth() + 1).padStart(2, '0') + '-' + String(dateToInsert.getDate()).padStart(2, '0')
+
+      transactionsToInsert.push({
+        user_id: userId,
+        type: 'despesa' as const,
+        description: `Parcela ${i}/${numInstallments}: ${debtData.name}`,
+        amount: amount,
+        due_date: dueDateStr,
+        status: 'em_aberto' as const,
+        is_fixed: true,
+        person_id: debtData.creditor_id || null,
+        notes: `Gerado automaticamente pela dívida: ${debtData.name}`,
+        installment_group_id: debtData.id,
+        installment_number: i,
+        installment_total: numInstallments
+      })
+    }
+
+    if (transactionsToInsert.length > 0) {
+      await supabase.from('transactions').insert(transactionsToInsert)
+    }
+  }
+}
+
 export function useDebts() {
   const { user } = useAuth()
 
@@ -50,64 +127,8 @@ export function useCreateDebt() {
 
       if (error) throw error
 
-      // 2. If a monthly payment is set, auto-create all upcoming expense transactions
-      if (data && data.monthly_payment && data.monthly_payment > 0) {
-        const today = new Date()
-        const dueDay = data.due_day || today.getDate()
-
-        let currentAmount = data.current_amount
-        let monthlyPayment = data.monthly_payment
-        let numInstallments = Math.ceil(currentAmount / monthlyPayment)
-        if (numInstallments > 360) numInstallments = 360
-
-        const transactionsToInsert = []
-        let currentMonthOffset = 0
-        
-        // Initial check: if due day this month already passed, start from next month
-        const thisMonthDate = new Date(today.getFullYear(), today.getMonth(), dueDay)
-        if (thisMonthDate < today) {
-           currentMonthOffset = 1
-        }
-
-        for (let i = 1; i <= numInstallments; i++) {
-          let amount = monthlyPayment
-          if (i === numInstallments) {
-              const remainder = currentAmount - (monthlyPayment * (numInstallments - 1))
-              if (remainder > 0 && remainder <= monthlyPayment) {
-                  amount = remainder
-              }
-          }
-
-          // Calculate date
-          const targetMonth = today.getMonth() + currentMonthOffset + (i - 1)
-          let date = new Date(today.getFullYear(), targetMonth, dueDay)
-          // Handle day overflow (e.g., Feb 31 -> Mar 3 -> fix to Feb 28/29)
-          if (date.getDate() !== dueDay) {
-             date = new Date(today.getFullYear(), targetMonth + 1, 0)
-          }
-
-          const dueDateStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
-
-          transactionsToInsert.push({
-            user_id: user.id,
-            type: 'despesa' as const,
-            description: `Parcela ${i}/${numInstallments}: ${data.name}`,
-            amount: amount,
-            due_date: dueDateStr,
-            status: 'em_aberto' as const,
-            is_fixed: true,
-            person_id: data.creditor_id || null,
-            notes: `Gerado automaticamente pela dívida: ${data.name}`,
-            installment_group_id: data.id,
-            installment_number: i,
-            installment_total: numInstallments
-          })
-        }
-
-        if (transactionsToInsert.length > 0) {
-          await supabase.from('transactions').insert(transactionsToInsert)
-        }
-      }
+      // 2. Auto-create all upcoming expense transactions
+      await generateInstallmentTransactions(data, user.id)
 
       return data
     },
@@ -134,6 +155,19 @@ export function useUpdateDebt() {
         .single()
 
       if (error) throw error
+
+      // After updating, delete existing pending transactions for this debt
+      await supabase
+        .from('transactions')
+        .delete()
+        .eq('installment_group_id', id)
+        .eq('status', 'em_aberto')
+
+      // And regenerate them based on the new settings
+      if (data) {
+        await generateInstallmentTransactions(data, data.user_id)
+      }
+
       return data
     },
     onSuccess: () => {
