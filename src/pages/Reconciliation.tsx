@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { useAccounts } from '@/hooks/useAccounts'
+import { useAccounts, useDefaultAccount } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { useTransactions } from '@/hooks/useTransactions'
 import { parseOFX, ParsedTransaction } from '@/lib/ofxParser'
@@ -36,6 +36,7 @@ export function Reconciliation() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const { data: accounts } = useAccounts()
+  const [userDefaultAccountId] = useDefaultAccount()
   const { data: categories } = useCategories()
   const { data: allTransactions } = useTransactions()
   
@@ -58,7 +59,7 @@ export function Reconciliation() {
         const content = event.target?.result as string
         const parsed = parseOFX(content)
         
-        const defaultAccountId = accounts?.find(a => a.is_active)?.id || ''
+        const defaultAccountId = userDefaultAccountId || accounts?.find(a => a.is_active)?.id || ''
         
         const mapped: ImportableTransaction[] = parsed.map(tx => {
           // 1. Check for duplicates using notes
@@ -127,15 +128,19 @@ export function Reconciliation() {
   }
 
   const toggleSelection = (index: number) => {
-    const newTxs = [...importableTxs]
-    newTxs[index].selected = !newTxs[index].selected
-    setImportableTxs(newTxs)
+    setImportableTxs(prev => {
+      const newTxs = [...prev]
+      newTxs[index] = { ...newTxs[index], selected: !newTxs[index].selected }
+      return newTxs
+    })
   }
 
   const updateTxField = (index: number, field: keyof ImportableTransaction, value: any) => {
-    const newTxs = [...importableTxs]
-    newTxs[index] = { ...newTxs[index], [field]: value }
-    setImportableTxs(newTxs)
+    setImportableTxs(prev => {
+      const newTxs = [...prev]
+      newTxs[index] = { ...newTxs[index], [field]: value }
+      return newTxs
+    })
   }
 
   const importMutation = useMutation({

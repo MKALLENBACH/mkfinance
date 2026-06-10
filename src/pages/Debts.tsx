@@ -6,7 +6,7 @@ import {
   useDeleteDebt, 
   useRegisterDebtPayment 
 } from '@/hooks/useDebts'
-import { useAccounts } from '@/hooks/useAccounts'
+import { useAccounts, useDefaultAccount } from '@/hooks/useAccounts'
 import { usePeople } from '@/hooks/usePeople'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import { Plus, Pencil, Trash2, Banknote, AlertTriangle } from 'lucide-react'
 export function Debts() {
   const { data: debts, isLoading } = useDebts()
   const { data: accounts } = useAccounts()
+  const [defaultAccountId] = useDefaultAccount()
   const { data: people } = usePeople()
   
   const createDebt = useCreateDebt()
@@ -86,17 +87,22 @@ export function Debts() {
       alert('Selecione uma conta e informe um valor maior que zero.')
       return
     }
+    if (!paymentData.paidAt) {
+      alert('Informe a data do pagamento.')
+      return
+    }
 
     registerPayment.mutate({
       debtId: debt.id,
       accountId: paymentData.accountId,
       amount: paymentData.amount,
       description: `Pagamento Dívida: ${debt.name}`,
-      currentDebtAmount: debt.current_amount
+      currentDebtAmount: debt.current_amount,
+      paidAt: paymentData.paidAt
     }, {
       onSuccess: () => {
         setPaymentDebtId(null)
-        setPaymentData({ amount: 0, accountId: '' })
+        setPaymentData({ amount: 0, accountId: '', paidAt: new Date().toISOString().split('T')[0] })
       }
     })
   }
@@ -377,6 +383,11 @@ export function Debts() {
                             <option key={a.id} value={a.id}>{a.name}</option>
                           ))}
                         </select>
+                        <Input 
+                          type="date"
+                          value={paymentData.paidAt}
+                          onChange={e => setPaymentData({...paymentData, paidAt: e.target.value})}
+                        />
                       </div>
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" className="flex-1" onClick={() => setPaymentDebtId(null)}>
@@ -390,7 +401,11 @@ export function Debts() {
                   ) : (
                     <Button className="w-full" variant="secondary" onClick={() => {
                       setPaymentDebtId(debt.id)
-                      setPaymentData({ amount: debt.monthly_payment || 0, accountId: accounts?.[0]?.id || '' })
+                      setPaymentData({ 
+                        amount: debt.monthly_payment || 0, 
+                        accountId: defaultAccountId || accounts?.[0]?.id || '', 
+                        paidAt: new Date().toISOString().split('T')[0] 
+                      })
                     }}>
                       Registrar Pagamento Parcial
                     </Button>

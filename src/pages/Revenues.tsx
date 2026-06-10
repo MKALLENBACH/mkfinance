@@ -1,27 +1,32 @@
 import { useState, useMemo } from 'react'
 import { useTransactions, useCreateTransaction, useUpdateTransaction, useDeleteTransaction } from '@/hooks/useTransactions'
-import { useAccounts } from '@/hooks/useAccounts'
+import { useAccounts, useDefaultAccount } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { usePeople } from '@/hooks/usePeople'
+import { useRegisterDebtPayment } from '@/hooks/useDebts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatCurrencyBRL, formatDateBR } from '@/lib/formatters'
 import { Plus, Pencil, Trash2, CheckCircle2, Search, Filter, ArrowUpDown, TrendingUp, Clock, DollarSign, X } from 'lucide-react'
+import { PaymentConfirmationModal } from '@/components/PaymentConfirmationModal'
 
 export function Revenues() {
   const { data: transactions, isLoading } = useTransactions('receita')
   const { data: accounts } = useAccounts()
+  const [defaultAccountId] = useDefaultAccount()
   const { data: categories } = useCategories()
   const { data: people } = usePeople()
   
   const createTx = useCreateTransaction()
   const updateTx = useUpdateTransaction()
   const deleteTx = useDeleteTransaction()
+  const registerDebtPayment = useRegisterDebtPayment()
 
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [formData, setFormData] = useState<any>({})
+  const [txToConfirmPayment, setTxToConfirmPayment] = useState<any | null>(null)
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('')
@@ -108,7 +113,7 @@ export function Revenues() {
       amount: 0,
       due_date: new Date().toISOString().split('T')[0],
       status: 'prevista',
-      account_id: accounts?.[0]?.id || null,
+      account_id: defaultAccountId || accounts?.[0]?.id || null,
       category_id: categories?.find(c => c.type === 'receita')?.id || null,
       person_id: null
     })
@@ -153,16 +158,36 @@ export function Revenues() {
   }
 
   const markAsReceived = (tx: any) => {
-    if (!tx.account_id) {
-      alert('Para marcar como recebida, é necessário vincular uma conta financeira na edição.')
-      return
+    setTxToConfirmPayment(tx)
+  }
+
+  const handleConfirmPayment = (data: { realAmount: number; accountId: string; paidAt: string }) => {
+    if (!txToConfirmPayment) return
+
+    const isDebt = !!txToConfirmPayment.installment_group_id && txToConfirmPayment.is_fixed
+    if (isDebt) {
+      registerDebtPayment.mutate({
+        debtId: txToConfirmPayment.installment_group_id,
+        transactionId: txToConfirmPayment.id,
+        accountId: data.accountId,
+        amount: data.realAmount,
+        description: txToConfirmPayment.description,
+        paidAt: data.paidAt,
+        currentDebtAmount: 0 // Será calculado no hook buscando do banco
+      }, {
+        onSuccess: () => setTxToConfirmPayment(null)
+      })
+    } else {
+      updateTx.mutate({
+        id: txToConfirmPayment.id,
+        status: 'recebida',
+        paid_at: data.paidAt,
+        amount: data.realAmount,
+        account_id: data.accountId
+      }, {
+        onSuccess: () => setTxToConfirmPayment(null)
+      })
     }
-    
-    updateTx.mutate({
-      id: tx.id,
-      status: 'recebida',
-      paid_at: new Date().toISOString().split('T')[0]
-    })
   }
 
   if (isLoading) {
@@ -470,6 +495,14 @@ export function Revenues() {
           </TableBody>
         </Table>
       </Card>
+
+      <PaymentConfirmationModal 
+        isOpen={txToConfirmPayment !== null}
+        onClose={() => setTxToConfirmPayment(null)}
+        onConfirm={handleConfirmPayment}
+        transaction={txToConfirmPayment}
+        type="receita"
+      />
     </div>
   )
 }

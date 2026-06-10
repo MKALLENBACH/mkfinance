@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '@/hooks/useAccounts'
+import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount, useDefaultAccount } from '@/hooks/useAccounts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatCurrencyBRL } from '@/lib/formatters'
-import { Plus, Pencil, Trash2, Wallet } from 'lucide-react'
+import { Plus, Pencil, Trash2, Wallet, Star } from 'lucide-react'
 import { Database } from '@/integrations/supabase/types'
 
 type Account = Database['public']['Tables']['financial_accounts']['Row']
@@ -15,6 +15,7 @@ export function Accounts() {
   const createAccount = useCreateAccount()
   const updateAccount = useUpdateAccount()
   const deleteAccount = useDeleteAccount()
+  const [defaultAccountId, setDefaultAccount] = useDefaultAccount()
 
   const [isEditing, setIsEditing] = useState<string | null>(null)
   const [formData, setFormData] = useState<Partial<Account>>({})
@@ -47,7 +48,13 @@ export function Accounts() {
         current_balance: formData.initial_balance || 0,
         is_active: formData.is_active ?? true
       }, {
-        onSuccess: () => setIsEditing(null)
+        onSuccess: (data) => {
+          setIsEditing(null)
+          // Se for a primeira conta, já define como padrão
+          if (accounts?.length === 0) {
+            setDefaultAccount(data.id)
+          }
+        }
       })
     } else if (isEditing) {
       updateAccount.mutate({
@@ -63,7 +70,11 @@ export function Accounts() {
 
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta conta? Isso só será possível se não houver lançamentos vinculados a ela.')) {
-      deleteAccount.mutate(id)
+      deleteAccount.mutate(id, {
+        onSuccess: () => {
+          if (defaultAccountId === id) setDefaultAccount('')
+        }
+      })
     }
   }
 
@@ -113,6 +124,7 @@ export function Accounts() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px] text-center">Padrão</TableHead>
               <TableHead>Nome da Conta</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead className="text-right">Saldo Atual</TableHead>
@@ -123,6 +135,7 @@ export function Accounts() {
           <TableBody>
             {isEditing === 'new' && (
               <TableRow>
+                <TableCell></TableCell>
                 <TableCell>
                   <Input 
                     value={formData.name || ''} 
@@ -169,6 +182,7 @@ export function Accounts() {
             {accounts?.map((account) => (
               isEditing === account.id ? (
                 <TableRow key={account.id}>
+                  <TableCell></TableCell>
                   <TableCell>
                     <Input 
                       value={formData.name || ''} 
@@ -212,7 +226,19 @@ export function Accounts() {
                 </TableRow>
               ) : (
                 <TableRow key={account.id} className={!account.is_active ? 'opacity-50' : ''}>
-                  <TableCell className="font-medium">{account.name}</TableCell>
+                  <TableCell className="text-center">
+                    <button 
+                      onClick={() => setDefaultAccount(account.id)}
+                      className="text-muted-foreground hover:text-finance-income transition-colors"
+                      title={defaultAccountId === account.id ? "Esta é sua conta padrão" : "Definir como conta padrão"}
+                    >
+                      <Star className={`h-5 w-5 ${defaultAccountId === account.id ? 'fill-finance-income text-finance-income' : ''}`} />
+                    </button>
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {account.name}
+                    {defaultAccountId === account.id && <span className="ml-2 text-[10px] uppercase font-bold text-finance-income bg-finance-income/10 px-1.5 py-0.5 rounded">Padrão</span>}
+                  </TableCell>
                   <TableCell className="capitalize">{account.type}</TableCell>
                   <TableCell className={`text-right font-medium ${
                     account.current_balance >= 0 ? 'text-finance-balance' : 'text-finance-expense'
@@ -246,7 +272,7 @@ export function Accounts() {
 
             {accounts?.length === 0 && isEditing !== 'new' && (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                   Nenhuma conta cadastrada.
                 </TableCell>
               </TableRow>

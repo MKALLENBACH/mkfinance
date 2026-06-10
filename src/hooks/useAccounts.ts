@@ -115,3 +115,37 @@ export function useDeleteAccount() {
     },
   })
 }
+
+import { useState, useEffect } from 'react'
+
+export function useDefaultAccount() {
+  const { user } = useAuth()
+  const key = `mkfinance_default_account_${user?.id}`
+  
+  const [defaultAccountId, setDefaultAccountIdState] = useState<string>(() => {
+    if (!user) return ''
+    return localStorage.getItem(key) || ''
+  })
+
+  useEffect(() => {
+    if (user) {
+      const stored = localStorage.getItem(key)
+      if (stored !== defaultAccountId) {
+        setDefaultAccountIdState(stored || '')
+      }
+    }
+  }, [user, key])
+
+  const setDefaultAccount = (id: string) => {
+    if (!user) return
+    if (id === defaultAccountId) return
+    if (!id) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, id)
+    }
+    setDefaultAccountIdState(id)
+  }
+
+  return [defaultAccountId, setDefaultAccount] as const
+}

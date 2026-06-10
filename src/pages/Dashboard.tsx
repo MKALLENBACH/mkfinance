@@ -1,7 +1,11 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { useAuth } from '@/hooks/useAuth'
+import { useUpdateTransaction } from '@/hooks/useTransactions'
+import { useRegisterDebtPayment } from '@/hooks/useDebts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { 
   calcularSaldoTotal, 
   calcularReceitasMes, 
@@ -19,11 +23,18 @@ import {
   AlertCircle, 
   Clock, 
   CreditCard,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react'
+import { PaymentConfirmationModal } from '@/components/PaymentConfirmationModal'
 
 export function Dashboard() {
   const { user } = useAuth()
+  
+  const updateTx = useUpdateTransaction()
+  const registerDebtPayment = useRegisterDebtPayment()
+
+  const [txToConfirmPayment, setTxToConfirmPayment] = useState<any | null>(null)
 
   // Buscando todos os dados necessários para o dashboard de uma vez
   const { data: dashboardData, isLoading } = useQuery({
@@ -92,6 +103,39 @@ export function Dashboard() {
     despesasMensais: despesasMes, // Aproximação
     dividasMensais: debts.reduce((acc, d) => acc + (d.monthly_payment || 0), 0)
   })
+
+  const handleConfirmPayment = (data: { realAmount: number; accountId: string; paidAt: string }) => {
+    if (!txToConfirmPayment) return
+
+    const isDebt = !!txToConfirmPayment.installment_group_id && txToConfirmPayment.is_fixed
+    
+    // Tratamos tanto receita quanto despesa aqui, apesar do dashboard focar em despesas atrasadas
+    const newStatus = txToConfirmPayment.type === 'receita' ? 'recebida' : 'paga'
+
+    if (isDebt && txToConfirmPayment.type === 'despesa') {
+      registerDebtPayment.mutate({
+        debtId: txToConfirmPayment.installment_group_id,
+        transactionId: txToConfirmPayment.id,
+        accountId: data.accountId,
+        amount: data.realAmount,
+        description: txToConfirmPayment.description,
+        paidAt: data.paidAt,
+        currentDebtAmount: 0
+      }, {
+        onSuccess: () => setTxToConfirmPayment(null)
+      })
+    } else {
+      updateTx.mutate({
+        id: txToConfirmPayment.id,
+        status: newStatus,
+        paid_at: data.paidAt,
+        amount: data.realAmount,
+        account_id: data.accountId
+      }, {
+        onSuccess: () => setTxToConfirmPayment(null)
+      })
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -229,8 +273,13 @@ export function Dashboard() {
                       <p className="font-medium">{tx.description}</p>
                       <p className="text-xs text-muted-foreground">{formatDateBR(tx.due_date)}</p>
                     </div>
-                    <div className="font-medium text-finance-expense">
-                      {formatCurrencyBRL(tx.amount)}
+                    <div className="flex items-center gap-3">
+                      <div className="font-medium text-finance-expense">
+                        {formatCurrencyBRL(tx.amount)}
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => setTxToConfirmPayment(tx)} className="text-finance-income hover:bg-finance-income/10 hover:text-finance-income" title="Marcar como paga">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -254,8 +303,13 @@ export function Dashboard() {
                       <p className="font-medium text-finance-overdue">{tx.description}</p>
                       <p className="text-xs text-finance-overdue/80">{formatDateBR(tx.due_date)}</p>
                     </div>
-                    <div className="font-medium text-finance-overdue">
-                      {formatCurrencyBRL(tx.amount)}
+                    <div className="flex items-center gap-3">
+                      <div className="font-medium text-finance-overdue">
+                        {formatCurrencyBRL(tx.amount)}
+                      </div>
+                      <Button variant="ghost" size="icon" onClick={() => setTxToConfirmPayment(tx)} className="text-finance-income hover:bg-finance-income/10 hover:text-finance-income" title="Marcar como paga">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -270,6 +324,13 @@ export function Dashboard() {
         </Card>
       </div>
 
+      <PaymentConfirmationModal 
+        isOpen={txToConfirmPayment !== null}
+        onClose={() => setTxToConfirmPayment(null)}
+        onConfirm={handleConfirmPayment}
+        transaction={txToConfirmPayment}
+        type={txToConfirmPayment?.type || 'despesa'}
+      />
     </div>
   )
 }

@@ -251,43 +251,60 @@ export function useRegisterDebtPayment() {
   return useMutation({
     mutationFn: async ({ 
       debtId, 
+      transactionId,
       accountId, 
       amount, 
       description,
+      paidAt,
       currentDebtAmount
     }: { 
-      debtId: string, 
+      debtId: string,
+      transactionId?: string,
       accountId: string, 
       amount: number,
       description: string,
+      paidAt?: string,
       currentDebtAmount: number
     }) => {
       if (!user) throw new Error('Not authenticated')
 
-      // 1. Find the oldest pending installment for this debt
-      const { data: pendingTx } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('installment_group_id', debtId)
-        .eq('status', 'em_aberto')
-        .order('due_date', { ascending: true })
-        .limit(1)
-        .maybeSingle()
+      const paymentDate = paidAt || new Date().toISOString().split('T')[0]
+
+      // 1. Encontra a transação (se for passada) ou a parcela pendente mais antiga
+      let pendingTx = null
+      if (transactionId) {
+        const { data } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('id', transactionId)
+          .single()
+        pendingTx = data
+      } else {
+        const { data } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('installment_group_id', debtId)
+          .eq('status', 'em_aberto')
+          .order('due_date', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        pendingTx = data
+      }
 
       if (pendingTx) {
-        // Update the existing pending transaction
+        // Atualiza a transação para paga
         const { error: txError } = await supabase
           .from('transactions')
           .update({
             amount,
-            paid_at: new Date().toISOString().split('T')[0],
+            paid_at: paymentDate,
             status: 'paga',
             account_id: accountId,
           })
           .eq('id', pendingTx.id)
         if (txError) throw txError
       } else {
-        // Create a new paid expense transaction if no pending installment is found
+        // Cria uma nova se não achar nenhuma
         const { error: txError } = await supabase
           .from('transactions')
           .insert([{
@@ -295,8 +312,8 @@ export function useRegisterDebtPayment() {
             type: 'despesa',
             description,
             amount,
-            due_date: new Date().toISOString().split('T')[0],
-            paid_at: new Date().toISOString().split('T')[0],
+            due_date: paymentDate,
+            paid_at: paymentDate,
             status: 'paga',
             account_id: accountId,
             installment_group_id: debtId,
@@ -304,8 +321,17 @@ export function useRegisterDebtPayment() {
         if (txError) throw txError
       }
 
-      // 2. Reduce the debt amount
-      const newAmount = Math.max(0, currentDebtAmount - amount)
+      // 2. Busca o valor atual da dívida (segurança contra estados desatualizados no front)
+      const { data: currentDebtData } = await supabase
+        .from('debts')
+        .select('current_amount')
+        .eq('id', debtId)
+        .single()
+        
+      const realCurrentDebtAmount = currentDebtData?.current_amount || currentDebtAmount
+
+      // 3. Reduz o valor exato pago do montante da dívida
+      const newAmount = Math.max(0, realCurrentDebtAmount - amount)
       
       const { data: debtData, error: debtError } = await supabase
         .from('debts')
@@ -319,13 +345,24 @@ export function useRegisterDebtPayment() {
 
       if (debtError) throw debtError
 
+      // 3. Realocação: apaga as parcelas em aberto restantes e recria com o novo saldo exato
+      if (newAmount > 0) {
+        await supabase
+          .from('transactions')
+          .delete()
+          .eq('installment_group_id', debtId)
+          .eq('status', 'em_aberto')
+
+        await generateInstallmentTransactions(debtData, debtData.user_id)
+      }
+
       return { debt: debtData, isPaidOff: newAmount <= 0 }
     },
     onSuccess: (data) => {
       if (data.isPaidOff) {
         toast.success('Dívida quitada com sucesso! Parabéns!')
       } else {
-        toast.success('Pagamento registrado com sucesso!')
+        toast.success('Pagamento registrado e próximas parcelas realocadas!')
       }
       invalidateFinanceData(queryClient)
     },

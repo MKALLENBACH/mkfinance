@@ -258,6 +258,7 @@ export interface Database {
           user_id: string
           name: string
           creditor_id: string | null
+          category_id: string | null
           original_amount: number
           current_amount: number
           monthly_payment: number | null
@@ -276,6 +277,7 @@ export interface Database {
           user_id: string
           name: string
           creditor_id?: string | null
+          category_id?: string | null
           original_amount: number
           current_amount: number
           monthly_payment?: number | null
@@ -294,6 +296,7 @@ export interface Database {
           user_id?: string
           name?: string
           creditor_id?: string | null
+          category_id?: string | null
           original_amount?: number
           current_amount?: number
           monthly_payment?: number | null

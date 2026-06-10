@@ -5,7 +5,7 @@ import {
   useUpdateFixedTransaction, 
   useDeleteFixedTransaction 
 } from '@/hooks/useFixedTransactions'
-import { useAccounts } from '@/hooks/useAccounts'
+import { useAccounts, useDefaultAccount } from '@/hooks/useAccounts'
 import { useCategories } from '@/hooks/useCategories'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,7 @@ import { Plus, Pencil, Trash2, Repeat, ArrowUpCircle, ArrowDownCircle } from 'lu
 export function FixedTransactions() {
   const { data: fixedGroups, isLoading } = useFixedTransactions()
   const { data: accounts } = useAccounts()
+  const [defaultAccountId] = useDefaultAccount()
   const { data: categories } = useCategories()
   
   const createFixed = useCreateFixedTransaction()
@@ -32,7 +33,7 @@ export function FixedTransactions() {
       type: 'despesa',
       description: '',
       amount: 0,
-      account_id: '',
+      account_id: defaultAccountId || '',
       category_id: '',
       due_day: today.getDate(),
       start_date: today.toISOString().split('T')[0],
