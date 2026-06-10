@@ -1,7 +1,9 @@
 import { isBefore, startOfDay, parseISO } from 'date-fns'
 import { Database } from '@/integrations/supabase/types'
 
-type Transaction = Database['public']['Tables']['transactions']['Row']
+type Transaction = Database['public']['Tables']['transactions']['Row'] & {
+  category?: { ignore_in_totals?: boolean | null } | null
+}
 type Account = Database['public']['Tables']['financial_accounts']['Row']
 type Debt = Database['public']['Tables']['debts']['Row']
 
@@ -13,23 +15,23 @@ export function calcularSaldoTotal(contas: Account[]): number {
 
 export function calcularReceitasMes(transactions: Transaction[]): number {
   return transactions
-    .filter(t => t.type === 'receita')
+    .filter(t => t.type === 'receita' && t.category?.ignore_in_totals !== true)
     .reduce((acc, t) => acc + t.amount, 0)
 }
 
 export function calcularDespesasMes(transactions: Transaction[]): number {
   return transactions
-    .filter(t => t.type === 'despesa')
+    .filter(t => t.type === 'despesa' && t.category?.ignore_in_totals !== true)
     .reduce((acc, t) => acc + t.amount, 0)
 }
 
 export function calcularResultadoMes(transactions: Transaction[]): number {
   const receitas = transactions
-    .filter(t => t.type === 'receita' && t.status === 'recebida')
+    .filter(t => t.type === 'receita' && t.status === 'recebida' && t.category?.ignore_in_totals !== true)
     .reduce((acc, t) => acc + t.amount, 0)
     
   const despesas = transactions
-    .filter(t => t.type === 'despesa' && t.status === 'paga')
+    .filter(t => t.type === 'despesa' && t.status === 'paga' && t.category?.ignore_in_totals !== true)
     .reduce((acc, t) => acc + t.amount, 0)
     
   return receitas - despesas

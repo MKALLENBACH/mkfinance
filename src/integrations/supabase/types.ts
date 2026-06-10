@@ -82,6 +82,7 @@ export interface Database {
           color: string | null
           icon: string | null
           is_active: boolean | null
+          ignore_in_totals: boolean | null
           created_at: string | null
           updated_at: string | null
         }
@@ -93,6 +94,7 @@ export interface Database {
           color?: string | null
           icon?: string | null
           is_active?: boolean | null
+          ignore_in_totals?: boolean | null
           created_at?: string | null
           updated_at?: string | null
         }
@@ -104,6 +106,7 @@ export interface Database {
           color?: string | null
           icon?: string | null
           is_active?: boolean | null
+          ignore_in_totals?: boolean | null
           created_at?: string | null
           updated_at?: string | null
         }

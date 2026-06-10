@@ -45,7 +45,7 @@ export function Dashboard() {
       const [accountsRes, transactionsRes, debtsRes] = await Promise.all([
         supabase.from('financial_accounts').select('*').eq('is_active', true),
         // Pegamos transações do mês atual e as atrasadas
-        supabase.from('transactions').select('*'),
+        supabase.from('transactions').select('*, category:categories(ignore_in_totals)'),
         supabase.from('debts').select('*').in('status', ['ativa', 'atrasada'])
       ])
 

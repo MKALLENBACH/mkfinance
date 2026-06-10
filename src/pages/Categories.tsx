@@ -29,7 +29,8 @@ export function Categories() {
       name: '',
       type: 'despesa',
       color: '#ef4444',
-      is_active: true
+      is_active: true,
+      ignore_in_totals: false
     })
   }
 
@@ -47,7 +48,8 @@ export function Categories() {
         type: formData.type as any,
         color: formData.color || null,
         icon: formData.icon || null,
-        is_active: formData.is_active ?? true
+        is_active: formData.is_active ?? true,
+        ignore_in_totals: formData.ignore_in_totals ?? false
       }, {
         onSuccess: () => setIsEditing(null)
       })
@@ -58,7 +60,8 @@ export function Categories() {
         type: formData.type as any,
         color: formData.color || null,
         icon: formData.icon || null,
-        is_active: formData.is_active
+        is_active: formData.is_active,
+        ignore_in_totals: formData.ignore_in_totals
       }, {
         onSuccess: () => setIsEditing(null)
       })
@@ -114,6 +117,7 @@ export function Categories() {
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead className="text-center">Status</TableHead>
+              <TableHead className="text-center">Reflete Saldo?</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -150,6 +154,15 @@ export function Categories() {
                   <span className="inline-flex items-center rounded-full bg-finance-income/10 px-2.5 py-0.5 text-xs font-medium text-finance-income">
                     Ativa
                   </span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <input 
+                    type="checkbox" 
+                    checked={!formData.ignore_in_totals} 
+                    onChange={e => setFormData({...formData, ignore_in_totals: !e.target.checked})}
+                    className="w-4 h-4 cursor-pointer"
+                    title="Se marcado, reflete nos saldos"
+                  />
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button variant="outline" size="sm" onClick={() => setIsEditing(null)}>Cancelar</Button>
@@ -197,6 +210,15 @@ export function Categories() {
                       {formData.is_active ? 'Ativa' : 'Inativa'}
                     </button>
                   </TableCell>
+                  <TableCell className="text-center">
+                    <input 
+                      type="checkbox" 
+                      checked={!formData.ignore_in_totals} 
+                      onChange={e => setFormData({...formData, ignore_in_totals: !e.target.checked})}
+                      className="w-4 h-4 cursor-pointer"
+                      title="Se marcado, reflete nos saldos"
+                    />
+                  </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button variant="outline" size="sm" onClick={() => setIsEditing(null)}>Cancelar</Button>
                     <Button size="sm" onClick={handleSave} disabled={updateCategory.isPending}>Salvar</Button>
@@ -232,6 +254,11 @@ export function Categories() {
                     >
                       {category.is_active ? 'Ativa' : 'Inativa'}
                     </button>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <span className={`inline-flex items-center text-xs font-medium ${!category.ignore_in_totals ? 'text-finance-income' : 'text-muted-foreground'}`}>
+                      {!category.ignore_in_totals ? 'Sim' : 'Não'}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => handleEdit(category)}>

@@ -22,7 +22,7 @@ export function useTransactions(type?: 'receita' | 'despesa') {
         .select(`
           *,
           account:financial_accounts(name),
-          category:categories(name, color, icon),
+          category:categories(name, color, icon, ignore_in_totals),
           person:people(name)
         `)
         .order('due_date', { ascending: false })
@@ -36,7 +36,7 @@ export function useTransactions(type?: 'receita' | 'despesa') {
       if (error) throw error
       return data as (Transaction & {
         account: { name: string } | null,
-        category: { name: string, color: string | null, icon: string | null } | null,
+        category: { name: string, color: string | null, icon: string | null, ignore_in_totals: boolean | null } | null,
         person: { name: string } | null
       })[]
     },
