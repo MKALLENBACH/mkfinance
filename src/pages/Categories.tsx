@@ -42,11 +42,13 @@ export function Categories() {
   const handleSave = () => {
     if (!formData.name || !formData.type) return
 
+    const categoryColor = formData.type === 'receita' ? '#22c55e' : '#ef4444'
+
     if (isEditing === 'new') {
       createCategory.mutate({
         name: formData.name,
         type: formData.type as any,
-        color: formData.color || null,
+        color: categoryColor,
         icon: formData.icon || null,
         is_active: formData.is_active ?? true,
         ignore_in_totals: formData.ignore_in_totals ?? false
@@ -58,7 +60,7 @@ export function Categories() {
         id: isEditing,
         name: formData.name,
         type: formData.type as any,
-        color: formData.color || null,
+        color: categoryColor,
         icon: formData.icon || null,
         is_active: formData.is_active,
         ignore_in_totals: formData.ignore_in_totals
@@ -113,7 +115,6 @@ export function Categories() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px]"></TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead className="text-center">Status</TableHead>
@@ -124,14 +125,6 @@ export function Categories() {
           <TableBody>
             {isEditing === 'new' && (
               <TableRow>
-                <TableCell>
-                  <Input 
-                    type="color"
-                    className="w-10 h-10 p-1"
-                    value={formData.color || '#000000'}
-                    onChange={(e) => setFormData({...formData, color: e.target.value})}
-                  />
-                </TableCell>
                 <TableCell>
                   <Input 
                     value={formData.name || ''} 
@@ -176,14 +169,6 @@ export function Categories() {
                 <TableRow key={category.id}>
                   <TableCell>
                     <Input 
-                      type="color"
-                      className="w-10 h-10 p-1"
-                      value={formData.color || '#000000'}
-                      onChange={(e) => setFormData({...formData, color: e.target.value})}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input 
                       value={formData.name || ''} 
                       onChange={e => setFormData({...formData, name: e.target.value})}
                     />
@@ -226,12 +211,6 @@ export function Categories() {
                 </TableRow>
               ) : (
                 <TableRow key={category.id} className={!category.is_active ? 'opacity-50' : ''}>
-                  <TableCell>
-                    <div 
-                      className="w-4 h-4 rounded-full" 
-                      style={{ backgroundColor: category.color || '#ccc' }}
-                    />
-                  </TableCell>
                   <TableCell className="font-medium">{category.name}</TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
